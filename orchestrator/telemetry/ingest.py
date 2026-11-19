@@ -10,8 +10,15 @@ from collections import Counter
 class Telemetry:
     def __init__(self, eve_path):
         self.eve_path = eve_path
+        self.since = 0   # index of the first eve.json record belonging to THIS round
 
-    def _records(self):
+    def set_round_start(self):
+        """Mark the current end of eve.json so alerts()/flow_summary() report only this
+        round's events (eve.json is append-only and never cleared, so without this the
+        counts would be cumulative across all rounds)."""
+        self.since = len(self._records())
+
+    def _records(self, this_round_only=False):
         if not os.path.exists(self.eve_path):
             return []
         out = []
@@ -24,10 +31,10 @@ class Telemetry:
                     out.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-        return out
+        return out[self.since:] if this_round_only else out
 
     def alerts(self):
-        recs = self._records()
+        recs = self._records(this_round_only=True)
         return [
             {
                 "signature": r.get("alert", {}).get("signature"),
@@ -40,7 +47,7 @@ class Telemetry:
 
     def flow_summary(self):
         """Top talkers, per-IP connection counts, distinct ports, HTTP status mix."""
-        recs = self._records()
+        recs = self._records(this_round_only=True)
         talkers = Counter()
         ports = Counter()
         statuses = Counter()

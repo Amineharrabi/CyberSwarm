@@ -96,6 +96,7 @@ class Referee:
         red_guard = Guard(self.cfg["budgets"]["red_steps"] * 3)
         blue_guard = Guard(self.cfg["budgets"]["blue_steps"] * 3)
         telem = Telemetry(self.eve)
+        telem.set_round_start()   # so alerts/flows reflect THIS round only, not all history
 
         red_tools = RedTools(red_guard, red_log)
         blue_tools = BlueTools(blue_guard, blue_log, telem)
