@@ -1,0 +1,15 @@
+# per-run outputs
+runs/
+lab/logs/
+report/figures/
+*.pcap
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# editor
+.vscode/
+.idea/

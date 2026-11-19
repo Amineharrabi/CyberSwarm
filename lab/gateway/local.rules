@@ -1,0 +1,6 @@
+# Custom lab signatures for the weaknesses Red targets against the webapp.
+# Blue can add more at runtime via the add_ids_rule tool (appends here + reloads).
+alert http any any -> $HOME_NET 5000 (msg:"CS SQLi UNION attempt"; flow:to_server,established; content:"UNION"; nocase; content:"SELECT"; nocase; distance:0; sid:1000001; rev:1;)
+alert http any any -> $HOME_NET 5000 (msg:"CS SQLi tautology OR 1=1"; flow:to_server,established; content:"OR 1=1"; nocase; sid:1000002; rev:1;)
+alert http any any -> $HOME_NET 5000 (msg:"CS path traversal attempt"; flow:to_server,established; content:"../"; sid:1000003; rev:1;)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"CS port scan (many SYN)"; flags:S; threshold:type both, track by_src, count 20, seconds 5; sid:1000004; rev:1;)
