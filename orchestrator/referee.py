@@ -51,12 +51,26 @@ class Referee:
                         "up", "-d", "--build"], capture_output=True, text=True)
         time.sleep(self.cfg.get("reset_wait_s", 15))   # let services come up + traffic warm
 
+    def soft_reset(self):
+        """Per-round clean slate WITHOUT a full container rebuild: reload the gateway's
+        base firewall so Blue's block_ip drops from the previous round don't carry over
+        (otherwise, with --no-lab, the attacker starts the next round already blocked and
+        every request times out). Fast enough to run before every round."""
+        compose = os.path.join(LAB_DIR, "docker-compose.yml")
+        subprocess.run(["docker", "exec", "cs_gateway", "nft", "-f", "/etc/nftables.conf"],
+                       capture_output=True, text=True)
+        # also restore the webapp to its unpatched state so each round is comparable
+        subprocess.run(["docker", "compose", "-f", compose, "restart", "webapp"],
+                       capture_output=True, text=True)
+        time.sleep(self.cfg.get("soft_reset_wait_s", 4))
+
     def kill(self):
         subprocess.run(["docker", "compose", "-f", os.path.join(LAB_DIR, "docker-compose.yml"),
                         "down", "-v"], capture_output=True, text=True)
 
     # ---- one round ----
     def run_round(self, rnd):
+        self.soft_reset()   # clear last round's firewall blocks so Red starts unblocked
         red_log, blue_log = [], []
         red_guard = Guard(self.cfg["budgets"]["red_steps"] * 3)
         blue_guard = Guard(self.cfg["budgets"]["blue_steps"] * 3)

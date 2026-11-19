@@ -26,6 +26,8 @@ class Agent:
     def run(self, opening_user_msg, on_step=None):
         self.messages.append({"role": "user", "content": opening_user_msg})
         transcript = []
+        seen_calls = {}   # (tool, args) -> count : stagnation guard (ARTEX detectStagnation idea)
+        tool_counts = {}  # tool -> total calls this round
         for step in range(self.max_steps):
             resp = self.client.chat.completions.create(
                 model=self.model,
@@ -50,13 +52,41 @@ class Agent:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
+
+                # --- stagnation guard (adapted from ARTEX detectStagnation) ---
+                # An exact repeat of a prior call produces no new information: don't
+                # re-execute it, nudge the model to advance instead. Also nudge once a
+                # single tool dominates the round. This is what stops the model looping
+                # one tool (e.g. scan_ports x8) instead of walking the kill chain.
+                key = (fn, json.dumps(args, sort_keys=True))
+                seen_calls[key] = seen_calls.get(key, 0) + 1
+                tool_counts[fn] = tool_counts.get(fn, 0) + 1
+
+                if seen_calls[key] > 1:
+                    nudge = (f"BLOCKED: you already called {fn} with these exact arguments; "
+                             f"its result is above. Repeating it is wasted. Advance the kill "
+                             f"chain now — move to the next phase (enumerate endpoints, then "
+                             f"attempt the SQL-injection login, then extract the flag). Do NOT "
+                             f"repeat a tool you have already run.")
+                    transcript.append({"step": step, "tool": fn, "args": args, "result": "[blocked: duplicate]"})
+                    if on_step:
+                        on_step(self.name, step, fn, "[blocked: duplicate call]")
+                    self.messages.append({"role": "tool", "tool_call_id": tc.id,
+                                          "content": json.dumps({"ok": False, "summary": nudge})})
+                    continue
+
                 result = self.toolset.call(fn, **args)
-                transcript.append({"step": step, "tool": fn, "args": args, "result": result["summary"][:300]})
+                summary = result["summary"]
+                if tool_counts[fn] >= 3:
+                    summary += (f"\n\n[hint: you have used {fn} {tool_counts[fn]} times this round. "
+                                f"If it is not advancing you toward the flag, switch technique or "
+                                f"move to the next phase.]")
+                transcript.append({"step": step, "tool": fn, "args": args, "result": summary[:300]})
                 if on_step:
-                    on_step(self.name, step, fn, result["summary"][:200])
+                    on_step(self.name, step, fn, summary[:200])
                 self.messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": json.dumps({"ok": result["ok"], "summary": result["summary"]})[:4000],
+                    "content": json.dumps({"ok": result["ok"], "summary": summary})[:4000],
                 })
         return transcript
