@@ -1,24 +1,22 @@
 """
-Legitimate-user simulator. Produces the "normal" traffic class and the availability metric:
-if these requests start failing, the webapp is down (Blue over-blocked or Red broke it).
+Legitimate-user simulator for the Juice Shop target. Produces the "normal" traffic class
+and the availability metric: if these requests start failing, the app is down (Blue
+over-blocked, or Red broke it). Legit users browse — they do NOT inject.
 """
 import os
 import time
 import random
 import requests
 
-TARGET = os.environ.get("TARGET", "http://10.10.2.10:5000")
-USERS = [("alice", "password123"), ("bob", "hunter2")]
-SEARCHES = ["Widget", "Gadget", "Cog", "Sprocket", ""]
+TARGET = os.environ.get("TARGET", "http://10.10.2.11:3000")
+SEARCHES = ["apple", "juice", "banana", "cookie", "", "lemon"]
 
 
 def one_cycle():
     try:
         requests.get(f"{TARGET}/", timeout=5)
-        requests.get(f"{TARGET}/products", params={"q": random.choice(SEARCHES)}, timeout=5)
-        u, p = random.choice(USERS)
-        requests.post(f"{TARGET}/login", data={"username": u, "password": p}, timeout=5)
-        requests.get(f"{TARGET}/download", params={"file": "readme.txt"}, timeout=5)
+        requests.get(f"{TARGET}/api/Products", timeout=5)
+        requests.get(f"{TARGET}/rest/products/search", params={"q": random.choice(SEARCHES)}, timeout=5)
         print("[traffic] legit cycle ok", flush=True)
     except Exception as e:
         print(f"[traffic] request failed: {e}", flush=True)

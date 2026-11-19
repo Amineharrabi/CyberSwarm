@@ -66,6 +66,27 @@ SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "http_request",
+            "description": ("General HTTP request against a lab web app (use this for the Juice Shop "
+                            "REST API). Supports any method, custom headers (e.g. an Authorization "
+                            "bearer token), and a JSON/body payload where injection strings go. "
+                            "Returns status, headers and response body."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]},
+                    "url": {"type": "string", "description": "full lab URL, e.g. http://10.10.2.11:3000/rest/user/login"},
+                    "headers": {"type": "object", "description": "optional header name->value map",
+                                "additionalProperties": {"type": "string"}},
+                    "body": {"type": "string", "description": "optional raw request body (usually a JSON string)"},
+                },
+                "required": ["method", "url"],
+            },
+        },
+    },
 ]
 
 
@@ -106,6 +127,25 @@ class RedTools:
         summary = self.g.cap(out)
         _log(self.log, "red", "http_login", {"target": target, "username": username}, "ok", summary[:200])
         return {"ok": True, "summary": summary, "data": {"target": target}}
+
+    def http_request(self, method, url, headers=None, body=None):
+        self.g.budget()
+        hostpart = url.split("//", 1)[-1].split("/", 1)[0]
+        self.g.check_target(hostpart)
+        # Everything is passed as separate argv elements (no shell), so injection payloads
+        # with quotes/spaces in the body are safe. Default to JSON content type for the API.
+        args = ["curl", "-s", "-m", "15", "-i", "-X", method.upper(), url]
+        hdrs = dict(headers or {})
+        if body is not None and not any(k.lower() == "content-type" for k in hdrs):
+            hdrs["Content-Type"] = "application/json"
+        for k, v in hdrs.items():
+            args += ["-H", f"{k}: {v}"]
+        if body is not None:
+            args += ["--data-raw", body]
+        out = _exec(args, timeout=25)
+        summary = self.g.cap(out)
+        _log(self.log, "red", "http_request", {"method": method, "url": url}, "ok", summary[:200])
+        return {"ok": True, "summary": summary, "data": {"url": url}}
 
     # dispatch table used by the agent loop
     def call(self, name, **kwargs):

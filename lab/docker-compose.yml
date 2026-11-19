@@ -59,6 +59,21 @@ services:
     depends_on: [gateway, db]
     restart: "no"
 
+  # OWASP Juice Shop — the rich target: ~100 challenges across the OWASP Top 10, with a
+  # built-in challenge API (GET /api/Challenges) we use as ground-truth scoring. No route
+  # hack needed: the gateway masquerades attacker->dmz traffic, so Juice Shop just replies
+  # to the gateway on its own subnet. The IDS still sees the real attacker IP on ingress.
+  juiceshop:
+    image: bkimminich/juice-shop:v17.1.1
+    container_name: cs_juiceshop
+    networks:
+      dmz_net:
+        ipv4_address: 10.10.2.11
+    environment:
+      NODE_ENV: unsafe        # enable all challenges incl. the ones gated off by default
+    depends_on: [gateway]
+    restart: "no"
+
   db:
     build: ./db
     container_name: cs_db
@@ -85,9 +100,9 @@ services:
         ipv4_address: 10.10.1.20
     cap_add: [NET_ADMIN]
     environment:
-      TARGET: http://10.10.2.10:5000
+      TARGET: http://10.10.2.11:3000
     entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.1.254 && exec python gen.py"]
-    depends_on: [webapp]
+    depends_on: [juiceshop]
     restart: "no"
 
   red-box:
