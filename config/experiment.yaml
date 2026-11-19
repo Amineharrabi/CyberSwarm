@@ -1,8 +1,8 @@
 # CyberSwarm experiment configuration
 # One file drives a whole run. Change the learning flags to reproduce the ablation (E2).
 
-run_name: baseline        # becomes runs/<run_name>/ ...
-rounds: 5                 # soft-reset restarts Juice Shop each round so rounds are comparable
+run_name: baseline        # becomes runs/<run_name>/ ... (this is the full-learning rung: all flags on)
+rounds: 15                # soft-reset restarts Juice Shop each round so rounds are comparable
 seed: 42
 
 budgets:

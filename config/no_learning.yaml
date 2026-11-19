@@ -3,7 +3,7 @@
 # differs, so it writes to runs/no_learning/ for a side-by-side comparison with baseline.
 
 run_name: no_learning
-rounds: 5
+rounds: 15
 seed: 42
 
 budgets:

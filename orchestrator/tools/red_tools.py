@@ -87,6 +87,26 @@ SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": ("Run a shell command inside your attacker box (red-box) and return its "
+                            "output. The box has NO internet — it can only reach the lab network "
+                            "(10.10.0.0/16). Installed tools include: sqlmap (automated SQL "
+                            "injection), gobuster and dirb (content/directory discovery, wordlist at "
+                            "$WORDLIST), nikto (web vulnerability scanner), nmap, curl, nc, jq. "
+                            "Example: sqlmap -u \"http://10.10.2.11:3000/rest/products/search?q=1\" "
+                            "--batch --level 2. Use this when a dedicated tool does not fit."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "the shell command to execute in red-box"},
+                },
+                "required": ["command"],
+            },
+        },
+    },
 ]
 
 
@@ -146,6 +166,21 @@ class RedTools:
         summary = self.g.cap(out)
         _log(self.log, "red", "http_request", {"method": method, "url": url}, "ok", summary[:200])
         return {"ok": True, "summary": summary, "data": {"url": url}}
+
+    def run_command(self, command):
+        self.g.budget()
+        # red-box has no internet (internal network), so scope is enforced by the network.
+        # We only refuse obviously destructive host commands as defence-in-depth; the box is
+        # ephemeral and reset each round anyway.
+        low = command.lower()
+        banned = ["rm -rf /", "mkfs", "dd if=", ":(){", "shutdown", "reboot", "> /dev/sd", "of=/dev/"]
+        if any(b in low for b in banned):
+            _log(self.log, "red", "run_command", {"command": command[:160]}, "blocked", "destructive")
+            return {"ok": False, "summary": "blocked: destructive command refused", "data": {}}
+        out = _exec(["sh", "-c", command], timeout=150)
+        summary = self.g.cap(out)
+        _log(self.log, "red", "run_command", {"command": command[:200]}, "ok", summary[:200])
+        return {"ok": True, "summary": summary, "data": {}}
 
     # dispatch table used by the agent loop
     def call(self, name, **kwargs):
