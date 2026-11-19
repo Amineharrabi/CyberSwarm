@@ -100,7 +100,7 @@ class Referee:
                        for t in red_tx if t.get("tool") == "http_login")
         services = sum(1 for t in red_tx if t.get("tool") == "scan_ports")
         detections = len(telem.alerts())
-        legit_blocked = sum(1 for a in blue_log if a["tool"] == "block_ip" and a.get("args", {}).get("ip") == "10.10.2.20")
+        legit_blocked = sum(1 for a in blue_log if a["tool"] == "block_ip" and a.get("args", {}).get("ip") == "10.10.1.20")
         attack_stopped = 1 if (any(a["tool"] in ("block_ip", "patch_sqli") for a in blue_log) and not flag) else 0
 
         red_score = services + 3 * foothold + 5 * flag - detections

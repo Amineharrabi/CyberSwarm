@@ -77,13 +77,16 @@ services:
   traffic-gen:
     build: ./traffic-gen
     container_name: cs_traffic
+    # Legit users live on attacker_net (the "outside"), so their traffic crosses the gateway
+    # to reach the dmz webapp — the IDS sees it, and Blue must distinguish them (10.10.1.20)
+    # from the attacker (10.10.1.50) rather than blocking the whole segment.
     networks:
-      dmz_net:
-        ipv4_address: 10.10.2.20
+      attacker_net:
+        ipv4_address: 10.10.1.20
     cap_add: [NET_ADMIN]
     environment:
       TARGET: http://10.10.2.10:5000
-    entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.2.254 && exec python gen.py"]
+    entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.1.254 && exec python gen.py"]
     depends_on: [webapp]
     restart: "no"
 

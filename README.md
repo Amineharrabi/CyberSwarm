@@ -34,11 +34,19 @@ pip install -r requirements.txt
 ### 2. Bring the lab up by hand once (to grab the Ping + Wireshark screenshots)
 ```powershell
 cd ../lab
+./setup.ps1                                       # REQUIRED on Docker Desktop (see note below)
 docker compose up -d --build
-docker exec cs_redbox ping -c 3 10.10.2.10        # ping crosses the gateway
-docker exec cs_gateway tcpdump -i any -w /var/log/suricata/capture.pcap    # open in Wireshark
+docker exec cs_redbox ping -c 3 10.10.2.10        # ping crosses the gateway (TTL 63 = routed)
+docker exec cs_gateway tcpdump -i eth0 -w /var/log/suricata/capture.pcap   # open in Wireshark
 ```
 The pcap appears in `lab/logs/capture.pcap` (mounted to the host).
+
+> **Docker Desktop prerequisite — `setup.ps1`.** Docker Desktop (WSL2) passes every bridged
+> frame through the VM firewall, which drops traffic between different Docker networks. Our
+> gateway routes between three of them, so this filtering must be disabled at the bridge level
+> or no packet crosses the gateway. `setup.ps1` does this (one privileged helper container);
+> re-run it after each Docker Desktop restart. On a native Linux Docker host this is usually
+> unnecessary. This is a real finding worth a paragraph in the report's "challenges" section.
 
 ### 3. Run an experiment
 ```powershell

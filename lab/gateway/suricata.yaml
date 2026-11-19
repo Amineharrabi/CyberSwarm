@@ -29,6 +29,15 @@ af-packet:
     cluster-type: cluster_flow
     defrag: yes
 
+# Parse app-layer even on flows whose TCP handshake we didn't see. In this routed Docker
+# lab, a SYN port-scan from the attacker leaves half-open entries, and forwarded capture can
+# miss a handshake, so real attacker HTTP looks "midstream". Without this, those flows are
+# never parsed and SQLi/traversal content rules never fire.
+stream:
+  midstream: true
+  async-oneside: true
+  checksum-validation: no
+
 logging:
   default-log-level: notice
   outputs:

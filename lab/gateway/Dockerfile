@@ -1,5 +1,8 @@
 # Gateway: router + firewall + IDS sensor for the whole lab.
-FROM debian:bookworm-slim
+# Ubuntu base: Debian bookworm's pinned snapshot ships no suricata candidate;
+# Ubuntu 24.04 carries Suricata 7.x in its default repos.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         nftables \

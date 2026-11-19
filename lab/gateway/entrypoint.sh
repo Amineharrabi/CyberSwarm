@@ -8,14 +8,20 @@ sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || echo 1 > /proc/sys/net/ipv4/i
 echo "[gateway] loading nftables ruleset"
 nft -f /etc/nftables.conf
 
-# Masquerade so return traffic finds its way back across segments.
-nft add table ip nat 2>/dev/null || true
-nft add chain ip nat postrouting '{ type nat hook postrouting priority 100 ; }' 2>/dev/null || true
-nft add rule ip nat postrouting ip saddr 10.10.1.0/24 ip daddr 10.10.2.0/24 counter 2>/dev/null || true
+# No NAT: cross-segment routing works with source IPs intact (see docker VM bridge-nf
+# note in README). Preserving the real source IP is what lets Blue detect and block the
+# attacker by address. Return paths work because every container's default route is the
+# gateway.
 
-echo "[gateway] starting Suricata on all interfaces (IDS mode)"
-# -i any: watch every segment the gateway bridges. eve.json is mounted to the host.
-suricata -c /etc/suricata/suricata.yaml -i any -v &
+echo "[gateway] starting Suricata on eth0 (attacker-facing segment, IDS mode, libpcap)"
+# Sniff eth0 only (attacker_net side). All client traffic — legit users AND the attacker —
+# enters the dmz through here, so Suricata sees complete bidirectional HTTP streams with
+# real source IPs. Sniffing 'any' would double-count each forwarded packet (ingress+egress)
+# and break TCP reassembly, so HTTP never parses. eve.json is mounted to the host.
+# -k none: skip checksum validation. In Docker/VMs, checksum offload leaves captured
+# packets with "invalid" checksums; without this Suricata drops them from stream
+# reassembly, so HTTP never parses and content rules (SQLi, traversal) never fire.
+suricata -c /etc/suricata/suricata.yaml --pcap=eth0 -k none -v &
 
 echo "[gateway] up. Blocking is Blue-controlled via nft from the orchestrator."
 # Keep PID 1 alive; tcpdump here is handy for the Wireshark screenshot:
