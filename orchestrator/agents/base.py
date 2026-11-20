@@ -29,13 +29,22 @@ class Agent:
         seen_calls = {}   # (tool, args) -> count : stagnation guard (ARTEX detectStagnation idea)
         tool_counts = {}  # tool -> total calls this round
         for step in range(self.max_steps):
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=self.messages,
-                tools=self.schemas,
-                tool_choice="auto",
-                temperature=0.3,
-            )
+            try:
+                resp = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=self.messages,
+                    tools=self.schemas,
+                    tool_choice="auto",
+                    temperature=0.3,
+                )
+            except Exception as e:
+                # A single bad generation (e.g. Ollama "token repeat limit reached", a
+                # timeout, or a 500) must not crash a multi-hour run. End this agent's turn
+                # gracefully and let the round/experiment continue.
+                transcript.append({"step": step, "error": str(e)[:200]})
+                if on_step:
+                    on_step(self.name, step, None, f"[llm error, ending turn: {str(e)[:100]}]")
+                break
             msg = resp.choices[0].message
             self.messages.append(msg.model_dump(exclude_none=True))
 

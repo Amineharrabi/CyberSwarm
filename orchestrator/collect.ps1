@@ -4,12 +4,13 @@
 #
 #   powershell -File collect.ps1                 # 14B (default in the configs)
 #   powershell -File collect.ps1 -Model qwen2.5:7b
-param([string]$Model = "", [int]$Repeats = 2)
+param([string]$Model = "", [int]$Repeats = 2,
+      [string[]]$Configs = @("no_learning", "reflect", "reflect_mem", "baseline"))
 
 $env:Path = "$env:ProgramFiles\Docker\Docker\resources\bin;" + $env:Path
 Set-Location $PSScriptRoot    # orchestrator/
 
-$configs = @("no_learning", "reflect", "reflect_mem", "baseline")
+$configs = $Configs
 $modelArg = if ($Model) { @("--model", $Model) } else { @() }
 
 Write-Output "collect.ps1 start $(Get-Date -Format o)  model=$(if($Model){$Model}else{'config-default'})  repeats=$Repeats"
