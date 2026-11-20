@@ -6,9 +6,9 @@ compare four *learning methods* for the agents and then introduce a fifth, quali
 different one: **fine-tuning the model weights** (QLoRA behavioural cloning) on the
 successful trajectories the other methods produced.
 
-All runs: 15 rounds, Qwen2.5-14B-Instruct, seed 42, same lab, Juice Shop target
-(107 challenges, ground-truth scoreboard). Each round is soft-reset (firewall + target
-restarted) so rounds are independent and comparable.
+All runs: 15 rounds × 2 repeats per method, Qwen2.5-14B-Instruct, seed 42, same lab,
+Juice Shop target (107 challenges, ground-truth scoreboard). Each round is soft-reset
+(firewall + target restarted) so rounds are independent and comparable.
 
 ## The five methods
 
@@ -32,25 +32,29 @@ round 1, so every method detects ~2 alerts/round and `blue_score` ≈ 2. The met
 discriminates is **defensive competence**: in how many rounds did Blue actually block the
 attacker, and how decisively.
 
+Two repeats per method (`_r1`, `_r2`); the "blocked" column shows the mean with the
+per-repeat values in parentheses.
+
 | method | blocked the attacker | first block (step) | first patch (step) | legit users blocked |
 |--------|---------------------|--------------------|--------------------|---------------------|
-| none | 7/15 (47%) | 1.14 | 1.00 | 0 |
-| reflect | 5/15 (33%) | 1.40 | 1.00 | 0 |
-| +memory | 15/15 (100%) | 1.20 | 1.20 | 0 |
-| +debrief | 14/15 (93%) | 1.07 | 1.14 | 0 |
-| **FINE-TUNED** | **15/15 (100%)** | **1.13** | **1.00** | **0** |
+| none | 40% (47/33) | 1.17 | 1.00 | 0 |
+| reflect | 37% (33/40) | 1.45 | 1.03 | 0 |
+| +memory | 93% (100/87) | 1.10 | 1.10 | 0 |
+| +debrief | 90% (93/87) | 1.04 | 1.11 | 0 |
+| **FINE-TUNED** | **100% (100/100)** | **1.07** | **1.00** | **0** |
 
 **Takeaways**
 
-1. **Fine-tuning reaches top-tier defensive reliability (100% of rounds blocked) with
-   zero runtime learning machinery.** It matches the best prompt-based method (`+memory`)
-   while using no reflection/memory/debrief and no extra context — the policy is
-   internalised in the weights.
+1. **Fine-tuning is the most *reliable* defender — 100% of rounds blocked in both
+   repeats, with zero variance — and uses no runtime learning machinery.** The
+   prompt-based methods are strong but wobble across repeats (`+memory` 100→87%,
+   `+debrief` 93→87%); only the fine-tuned defender is perfectly consistent, because the
+   policy is internalised in the weights (no reflection/memory/debrief, no extra context).
 2. **The fine-tuned defender is the most decisive**: it patches the vulnerability on its
-   first action (step 1.00) every round and blocks the attacker's IP by step ~1.1.
-3. **Naive reflection can hurt.** `reflect` alone (33%) is *worse* than `none` (47%) —
+   first action (step 1.00) every round and blocks the attacker's IP by step ~1.07.
+3. **Naive reflection can hurt.** `reflect` alone (37%) is *worse* than `none` (40%) —
    un-anchored reflection polluted the defender's policy. Memory/debrief recover it.
-4. **No false positives.** Across all 75 rounds Blue never blocked the legitimate user
+4. **No false positives.** Across all 150 rounds Blue never blocked the legitimate user
    (10.10.1.20), fine-tuned included — it learned to key on behaviour, not volume.
 
 See `analysis/ft_comparison.png` for the figure.

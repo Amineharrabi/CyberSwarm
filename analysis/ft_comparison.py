@@ -1,24 +1,27 @@
 """ft_comparison.py — the headline figure + table for the report.
 
 Compares the 4 prompt-based learning methods against the 4th method (QLoRA
-fine-tuning). The coarse IDS-alert scores saturate (single-vuln ceiling), so the
-discriminating metric is DEFENSIVE COMPETENCE: in how many rounds did Blue actually
-block the attacker, and how decisively (which step it blocked / patched on).
+fine-tuning), aggregating over all repeats found (<method>_r1, _r2, ...).
 
-    python ft_comparison.py            # reads ../runs/<method>_r1
+    python ft_comparison.py
 
-Finding: fine-tuning reaches top-tier block reliability (100%) with NO runtime
+The coarse IDS-alert scores saturate (single-vuln ceiling), so the discriminating
+metric is DEFENSIVE COMPETENCE: in how many rounds did Blue actually block the
+attacker, and how decisively (which step it blocked / patched on). Error bars span
+the repeats.
+
+Finding: fine-tuning reaches top-tier block reliability with NO runtime
 reflection/memory/debrief — the defensive policy is internalised in the weights.
 """
 import json, glob, os
+import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ORDER = ["no_learning_r1", "reflect_r1", "reflect_mem_r1", "baseline_r1", "ft_r1"]
-LABEL = {"no_learning_r1": "none", "reflect_r1": "reflect",
-         "reflect_mem_r1": "+memory", "baseline_r1": "+debrief",
-         "ft_r1": "FINE-TUNED"}
+METHODS = [("no_learning", "none"), ("reflect", "reflect"),
+           ("reflect_mem", "+memory"), ("baseline", "+debrief"),
+           ("ft", "FINE-TUNED")]
 COLOR = {"none": "#8a8f98", "reflect": "#5b8def", "+memory": "#2bb673",
          "+debrief": "#e0a106", "FINE-TUNED": "#d7263d"}
 
@@ -35,81 +38,103 @@ def first_step(msgs, tool):
     return None
 
 
-def collect(run):
-    rounds = sorted(glob.glob(f"../runs/{run}/round_*/scores.json"))
-    det, solved, blue, red, legit = [], [], [], [], 0
-    for p in rounds:
-        x = json.load(open(p))
-        det.append(x["detections"]); solved.append(x["challenges_solved_round"])
-        blue.append(x["blue_score"]); red.append(x["red_score"])
-        legit += x["legit_blocked"]
-    blocked = 0; bsteps = []; psteps = []; calls = []
-    for p in sorted(glob.glob(f"../runs/{run}/round_*/blue_messages.json")):
+def run_stats(run_dir):
+    """Per-repeat stats for one runs/<method>_rN dir."""
+    rounds = sorted(glob.glob(f"{run_dir}/round_*/scores.json"))
+    if not rounds:
+        return None
+    det = [json.load(open(p))["detections"] for p in rounds]
+    blocked = 0; bsteps = []; psteps = []
+    for p in sorted(glob.glob(f"{run_dir}/round_*/blue_messages.json")):
         msgs = json.load(open(p, encoding="utf-8"))
-        calls.append(sum(len(m.get("tool_calls") or []) for m in msgs
-                         if m.get("role") == "assistant"))
         b = first_step(msgs, "block_ip"); pt = first_step(msgs, "patch_sqli")
         if b is not None:
             blocked += 1; bsteps.append(b)
         if pt is not None:
             psteps.append(pt)
-    n = len(rounds) or 1
-    mean = lambda xs: sum(xs) / len(xs) if xs else 0.0
-    return dict(n=n, det=det, solved=solved, mean_blue=mean(blue), mean_red=mean(red),
-                legit=legit, blocked=blocked, block_rate=100.0 * blocked / n,
+    n = len(rounds)
+    mean = lambda xs: float(np.mean(xs)) if xs else float("nan")
+    return dict(n=n, det=det, block_rate=100.0 * blocked / n,
                 avg_block_step=mean(bsteps), avg_patch_step=mean(psteps),
-                avg_calls=mean(calls))
+                mean_det=mean(det))
+
+
+def agg(cfg):
+    reps = [run_stats(d) for d in sorted(glob.glob(f"../runs/{cfg}_r*"))]
+    reps = [r for r in reps if r]
+    return reps
+
+
+def ms(vals):
+    vals = [v for v in vals if v == v]  # drop nan
+    a = np.array(vals, float)
+    return (float(a.mean()), float(a.max() - a.mean()), float(a.mean() - a.min())) if len(a) else (0, 0, 0)
 
 
 def main():
-    data = {LABEL[r]: collect(r) for r in ORDER if os.path.isdir(f"../runs/{r}")}
-    names = [LABEL[r] for r in ORDER if LABEL[r] in data]
+    data = {}
+    for cfg, lbl in METHODS:
+        reps = agg(cfg)
+        if reps:
+            data[lbl] = reps
+    names = [lbl for _, lbl in METHODS if lbl in data]
     cols = [COLOR[n] for n in names]
+    nrep = {n: len(data[n]) for n in names}
 
-    fig = plt.figure(figsize=(14, 4.6))
-    # Panel 1: block reliability (the headline)
+    fig = plt.figure(figsize=(14, 4.8))
+    x = np.arange(len(names))
+
+    # Panel 1: block reliability (headline) with range bars
     ax1 = fig.add_subplot(1, 3, 1)
-    rates = [data[n]["block_rate"] for n in names]
-    ax1.bar(names, rates, color=cols)
+    br = [ms([r["block_rate"] for r in data[n]]) for n in names]
+    means = [b[0] for b in br]
+    yerr = [[b[2] for b in br], [b[1] for b in br]]
+    ax1.bar(x, means, color=cols, yerr=yerr, capsize=4, error_kw=dict(ecolor="#333", lw=1))
     ax1.set_title("Defensive reliability:\nrounds attacker was blocked")
-    ax1.set_ylabel("% of rounds blocked"); ax1.set_ylim(0, 105)
-    for i, v in enumerate(rates):
-        ax1.text(i, v + 2, f"{v:.0f}%", ha="center", fontsize=9)
-    ax1.tick_params(axis="x", rotation=20)
+    ax1.set_ylabel("% of rounds blocked"); ax1.set_ylim(0, 108)
+    for i, v in enumerate(means):
+        ax1.text(i, min(v + 4, 103), f"{v:.0f}%", ha="center", fontsize=9)
+    ax1.set_xticks(x); ax1.set_xticklabels(names, rotation=20)
 
-    # Panel 2: decisiveness (lower = faster)
+    # Panel 2: decisiveness
     ax2 = fig.add_subplot(1, 3, 2)
-    import numpy as np
-    x = np.arange(len(names)); w = 0.38
-    ax2.bar(x - w / 2, [data[n]["avg_block_step"] for n in names], w, label="block step", color="#d7263d")
-    ax2.bar(x + w / 2, [data[n]["avg_patch_step"] for n in names], w, label="patch step", color="#2bb673")
+    w = 0.38
+    blk = [ms([r["avg_block_step"] for r in data[n]]) for n in names]
+    pat = [ms([r["avg_patch_step"] for r in data[n]]) for n in names]
+    ax2.bar(x - w / 2, [b[0] for b in blk], w, yerr=[[b[2] for b in blk], [b[1] for b in blk]],
+            capsize=3, label="block step", color="#d7263d")
+    ax2.bar(x + w / 2, [p[0] for p in pat], w, yerr=[[p[2] for p in pat], [p[1] for p in pat]],
+            capsize=3, label="patch step", color="#2bb673")
     ax2.set_title("Decisiveness:\nstep of first block / patch (lower=faster)")
     ax2.set_ylabel("Blue step index"); ax2.set_xticks(x); ax2.set_xticklabels(names, rotation=20)
     ax2.legend(fontsize=8)
 
-    # Panel 3: per-round detections curve
+    # Panel 3: per-round detections (mean across repeats)
     ax3 = fig.add_subplot(1, 3, 3)
     for n in names:
-        ax3.plot(range(len(data[n]["det"])), data[n]["det"], marker="o", ms=3,
-                 label=n, color=COLOR[n], lw=2 if n == "FINE-TUNED" else 1)
-    ax3.set_title("IDS detections / round"); ax3.set_xlabel("round")
+        mats = np.array([r["det"] for r in data[n]])
+        ax3.plot(range(mats.shape[1]), mats.mean(0), marker="o", ms=3, label=n,
+                 color=COLOR[n], lw=2 if n == "FINE-TUNED" else 1)
+    ax3.set_title("IDS detections / round (mean)"); ax3.set_xlabel("round")
     ax3.set_ylabel("alerts"); ax3.legend(fontsize=7); ax3.grid(True, alpha=0.3)
 
-    fig.suptitle("CyberSwarm — 4 learning methods vs. the fine-tuned defender (4th method)",
-                 fontsize=13)
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    reps_note = ", ".join(f"{n}={nrep[n]}" for n in names)
+    fig.suptitle(f"CyberSwarm — 4 learning methods vs. fine-tuned defender (repeats: {reps_note})",
+                 fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
     out = "ft_comparison.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     print(f"wrote {out}\n")
 
-    # Table
-    hdr = f"{'method':<12}{'block%':>8}{'blocked':>9}{'blk_step':>9}{'patch_step':>11}{'mean_det':>9}{'mean_blue':>10}{'legit_blk':>10}"
+    hdr = f"{'method':<12}{'repeats':>8}{'block% (mean)':>15}{'block_step':>12}{'patch_step':>12}{'mean_det':>10}"
     print(hdr); print("-" * len(hdr))
     for n in names:
-        d = data[n]
-        print(f"{n:<12}{d['block_rate']:>7.0f}%{str(d['blocked'])+'/'+str(d['n']):>9}"
-              f"{d['avg_block_step']:>9.2f}{d['avg_patch_step']:>11.2f}"
-              f"{sum(d['det'])/d['n']:>9.2f}{d['mean_blue']:>10.2f}{d['legit']:>10}")
+        br_m = ms([r["block_rate"] for r in data[n]])[0]
+        bs_m = ms([r["avg_block_step"] for r in data[n]])[0]
+        ps_m = ms([r["avg_patch_step"] for r in data[n]])[0]
+        dt_m = ms([r["mean_det"] for r in data[n]])[0]
+        rates = "/".join(f"{r['block_rate']:.0f}" for r in data[n])
+        print(f"{n:<12}{nrep[n]:>8}{br_m:>10.0f}% ({rates}){bs_m:>12.2f}{ps_m:>12.2f}{dt_m:>10.2f}")
 
 
 if __name__ == "__main__":
