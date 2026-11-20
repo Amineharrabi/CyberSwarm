@@ -13,3 +13,7 @@ venv/
 # editor
 .vscode/
 .idea/
+
+# local junk
+_stale_runs/
+*.log
