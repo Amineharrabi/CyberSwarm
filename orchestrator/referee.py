@@ -101,9 +101,13 @@ class Referee:
         red_tools = RedTools(red_guard, red_log)
         blue_tools = BlueTools(blue_guard, blue_log, telem)
 
-        model = self.cfg["llm"]["planner"]
-        red = red_agent.build(self.client, model, RED_SCHEMAS, red_tools, self.cfg["budgets"]["red_steps"])
-        blue = blue_agent.build(self.client, model, BLUE_SCHEMAS, blue_tools, self.cfg["budgets"]["blue_steps"])
+        # per-agent model override (fine-tuned method: e.g. blue_model = a FT defender) —
+        # defaults to the shared planner model so the other methods are unaffected.
+        planner = self.cfg["llm"]["planner"]
+        red_model = self.cfg["llm"].get("red_model", planner)
+        blue_model = self.cfg["llm"].get("blue_model", planner)
+        red = red_agent.build(self.client, red_model, RED_SCHEMAS, red_tools, self.cfg["budgets"]["red_steps"])
+        blue = blue_agent.build(self.client, blue_model, BLUE_SCHEMAS, blue_tools, self.cfg["budgets"]["blue_steps"])
 
         # inject memory/playbook if enabled
         mem_on = self.cfg["learning"]["memory"]
@@ -129,6 +133,16 @@ class Referee:
         scores = self.score(red_tx, blue_tx, red_log, blue_log, telem)
         self.learning_phase(rnd, red, blue, red_tx, blue_tx, red_log, blue_log)
         self.save(rnd, red_tx, blue_tx, red_log, blue_log, scores)
+        # Save the FULL agent conversations (system + observations + tool calls + results).
+        # This is the raw material the fine-tuning method (Block 4) trains on.
+        d = os.path.join(self.run_dir, f"round_{rnd}")
+        os.makedirs(d, exist_ok=True)
+        for nm, ag in (("red", red), ("blue", blue)):
+            try:
+                with open(os.path.join(d, f"{nm}_messages.json"), "w", encoding="utf-8") as f:
+                    json.dump(ag.messages, f, default=str, indent=1)
+            except Exception as e:
+                print(f"[warn] could not save {nm} messages: {e}", flush=True)
         return scores
 
     # ---- scoring ----
